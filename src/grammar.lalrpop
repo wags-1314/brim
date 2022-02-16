@@ -1,0 +1,109 @@
+use std::str::FromStr;
+use crate::ast::{Ast, Operation};
+use crate::parse::to_raw_string;
+
+grammar;
+
+pub Brim: Ast = {
+    SemiColon<Declaration> => Ast::Begin(<>)
+}
+
+Declaration: Ast = {
+    Func,
+    CExpr,
+}
+
+Func: Ast = {
+    "func" <name:Identifier> "(" <params:Comma<Identifier>> ")" "=" <body:CExpr> =>
+        Ast::Func { name, params, body: Box::new(body) },
+}
+
+Apply: Ast = {
+    <func: Symbol> "(" <args: Comma<CExpr>> ")" =>
+        Ast::Apply { func: Box::new(func), args },
+}
+
+pub CExpr: Ast = {
+    <lhs:TExpr> "==" <rhs:TExpr> =>
+        Ast::Apply { func: Ast::make_symbol("==".to_string()), args: vec![lhs, rhs] },
+    TExpr,
+}
+
+TExpr: Ast = {
+    <lhs:TExpr> "+" <rhs:FExpr> =>
+        Ast::BinOp { operation: Operation::Plus, lhs: Box::new(lhs), rhs: Box::new(rhs) },
+    <lhs:TExpr> "-" <rhs:FExpr> =>
+        Ast::BinOp { operation: Operation::Minus, lhs: Box::new(lhs), rhs: Box::new(rhs) },
+    FExpr,
+}
+
+FExpr: Ast = {
+    <lhs:FExpr> "*" <rhs:Terminal> =>
+        Ast::BinOp { operation: Operation::Multiply, lhs: Box::new(lhs), rhs: Box::new(rhs) },
+    <lhs:FExpr> "/" <rhs:Terminal> =>
+        Ast::BinOp { operation: Operation::Divide, lhs: Box::new(lhs), rhs: Box::new(rhs) },
+    Terminal,
+}
+
+Begin: Ast = {
+    "{" <SemiColon<CExpr>> "}" => Ast::Begin(<>),
+}
+
+If: Ast = {
+    "if" <pred:CExpr> <consq:Begin> =>
+        Ast::If(Box::new(pred), Box::new(consq), None),
+    "if" <pred:CExpr> <consq:Begin> "else" <alt:Begin> =>
+        Ast::If(Box::new(pred), Box::new(consq), Some(Box::new(alt))),
+}
+
+Terminal: Ast = {
+    Integer, 
+    "(" <expr:CExpr> ")" => expr,
+    Symbol,
+    String,
+    Boolean,
+    Apply,
+    Begin,
+    If,
+}
+
+Integer: Ast = {
+    r"-?[0-9]+" => Ast::Integer(i64::from_str(<>).unwrap()),
+}
+
+Identifier: String = {
+    r"[a-zA-Z]+" => <>.to_string()
+}
+
+Symbol: Ast = {
+    <i:Identifier> => Ast::Symbol(<>),
+}
+
+String: Ast = {
+    r#""[^"]*""# => Ast::String(String::from(to_raw_string(<>))),
+}
+
+Boolean: Ast = {
+    "True" => Ast::Boolean(true),
+    "False" => Ast::Boolean(false),
+}
+
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+}
+
+SemiColon<T>: Vec<T> = {
+    <mut v:(<T> ";")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+}
